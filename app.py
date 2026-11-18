@@ -83,6 +83,25 @@ def validate_pcm(data, field, minimum, maximum):
         raise HTTPException(422, f"{field} must be a complete 16-bit PCM WAV, mono or stereo") from exc
 
 
+
+def valid_output_wav(data):
+    """Only deliver complete PCM WAV output; reject invalid model bytes."""
+    if not isinstance(data, bytes) or not 44 <= len(data) <= MAX_JOB_AUDIO:
+        return False
+    try:
+        with wave.open(io.BytesIO(data), "rb") as audio:
+            channels = audio.getnchannels()
+            width = audio.getsampwidth()
+            rate = audio.getframerate()
+            frames = audio.getnframes()
+            if channels not in (1, 2) or width != 2 or not 8000 <= rate <= 48000 or frames < 1:
+                return False
+            expected = frames * channels * width
+            return expected <= len(data) and len(audio.readframes(frames)) == expected
+    except (ValueError, wave.Error, EOFError):
+        return False
+
+
 async def read_upload(form, field, minimum, maximum):
     values = form.getlist(field)
     if len(values) != 1 or not isinstance(values[0], UploadFile):
@@ -178,6 +197,8 @@ def create_app(engine_factory=ChatterboxEngine):
                 wav = await to_thread.run_sync(operation, argument, reference)
             except Exception as exc:
                 raise HTTPException(502, "Voice conversion failed") from exc
+            if not valid_output_wav(wav):
+                raise HTTPException(502, "Voice provider returned invalid WAV audio")
             return wav_response(wav)
         finally:
             app.state.slot.release()
@@ -188,8 +209,8 @@ def create_app(engine_factory=ChatterboxEngine):
             async with app.state.slot:
                 job["status"] = "running"
                 wav = await to_thread.run_sync(operation, argument, reference)
-            if not isinstance(wav, bytes) or not 44 <= len(wav) <= MAX_JOB_AUDIO:
-                raise ValueError("Invalid result size")
+            if not valid_output_wav(wav):
+                raise ValueError("Invalid WAV result")
             job.update(status="complete", wav=wav)
         except Exception:
             job["status"] = "failed"
