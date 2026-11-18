@@ -96,3 +96,28 @@ Studio checks `GET /v1/capabilities` before enabling generation. The health
 check uses the same provider bearer key and returns the available modes.
 It sends no reference audio. If the check fails, confirm that the host is
 running this version and that the Studio URL and key are configured.
+
+## Vocal Polish: preserve your own voice
+
+VoxShift also accepts `POST /v1/jobs/enhance` (asynchronous) or
+`POST /v1/enhance` (direct). Provide `source` as a 1–60-second
+16-bit PCM WAV and `consent=confirmed`. **No reference voice is required.**
+The output retains the original voice and length, using conservative
+70 Hz rumble reduction, linked level compression, controlled makeup gain
+and a safe peak ceiling. It is *DSP vocal processing*, not generative AI,
+and is not a substitute for recording cleanup or a professional mix.
+
+In NaliChat Studio, opening VoxShift from a recorded vocal now selects
+**Vocal Polish · keep my own voice** by default. The resulting audio can
+be previewed and added as a separate track; the source recording remains.
+
+Run local tests without downloading neural weights:
+
+```sh
+python -m unittest test_api -v
+python -m unittest discover -s tests -v
+```
+
+Actual neural voice conversion still requires a separately running inference
+host and configured Base44 backend secrets. The existence of this endpoint
+does not mean that hosting is live.
