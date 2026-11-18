@@ -1,0 +1,16 @@
+# Optional NVIDIA GPU override. Use together with compose.yaml.
+# Requires an NVIDIA host with compatible drivers and NVIDIA Container Toolkit.
+services:
+  provider:
+    build:
+      args:
+        VOXSHIFT_TORCH_INDEX: ${VOXSHIFT_TORCH_INDEX:-https://download.pytorch.org/whl/cu124}
+    environment:
+      VOXSHIFT_DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
