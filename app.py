@@ -16,7 +16,7 @@ from starlette.datastructures import UploadFile
 
 MAX_FILE = 18 * 1024 * 1024
 MAX_REQUEST = 2 * MAX_FILE + 65536
-MAX_JOB_AUDIO = 2_000_000
+MAX_JOB_AUDIO = 3_000_000
 MAX_JOBS = 12
 MAX_PENDING = 3
 JOB_RETENTION = 600
