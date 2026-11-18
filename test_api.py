@@ -27,6 +27,10 @@ class StandInEngine:
         assert reference == make_wav(3)
         return source
 
+    def enhance(self, source, reference):
+        assert reference == b""
+        return source
+
 
 class ProviderAPI(unittest.TestCase):
     def test_auth_consent_validation_and_wav(self):
@@ -38,7 +42,7 @@ class ProviderAPI(unittest.TestCase):
             self.assertEqual(client.get("/healthz").json(), {"status": "ready"})
             self.assertEqual(client.get("/v1/capabilities").status_code, 401)
             self.assertEqual(client.get("/v1/capabilities", headers=headers).json(),
-                             {"modes": ["speech", "convert", "sing"]})
+                             {"modes": ["speech", "convert", "sing", "enhance"]})
             self.assertEqual(client.post("/v1/convert", files=files).status_code, 401)
             self.assertEqual(client.post("/v1/convert", files=files, headers=headers).status_code, 422)
             rejected = client.post("/v1/convert", files={**files, "reference": ("bad.wav", b"invalid")},
@@ -83,6 +87,28 @@ class ProviderAPI(unittest.TestCase):
                     break
                 sleep(0.01)
             self.assertEqual(status, "failed")
+
+    def test_vocal_enhancement_needs_no_reference_voice(self):
+        key = "test-key-" + "x" * 32
+        headers = {"Authorization": f"Bearer {key}", "X-VoxShift-Owner": "artist-one"}
+        source = make_wav(1)
+        with patch.dict("os.environ", {"VOXSHIFT_API_KEY": key}), TestClient(create_app(StandInEngine)) as client:
+            files = {"source": ("source.wav", source)}
+            direct = client.post("/v1/enhance", headers=headers,
+                                 files=files, data={"consent": "confirmed"})
+            self.assertEqual(direct.status_code, 200)
+            self.assertEqual(direct.content, source)
+            queued = client.post("/v1/jobs/enhance", headers=headers,
+                                 files=files, data={"consent": "confirmed"})
+            self.assertEqual(queued.status_code, 202)
+            path = "/v1/jobs/" + queued.json()["jobId"]
+            deadline = monotonic() + 2
+            while monotonic() < deadline:
+                result = client.get(path, headers=headers)
+                if result.headers.get("content-type") == "audio/wav":
+                    break
+                sleep(0.01)
+            self.assertEqual(result.content, source)
 
     def test_background_job_returns_before_inference_and_is_owner_scoped(self):
         started = Event()
