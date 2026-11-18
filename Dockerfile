@@ -9,7 +9,7 @@ RUN useradd --create-home voxshift \
     && install -d -o voxshift -g voxshift /home/voxshift/.cache/huggingface \
     && install -o voxshift -g voxshift /dev/null /home/voxshift/.cache/huggingface/.voxshift-cache
 USER voxshift
-COPY app.py pitch_lock.py ./
+COPY app.py pitch_lock.py vocal_enhance.py ./
 ENV VOXSHIFT_DEVICE=cpu HF_HOME=/home/voxshift/.cache/huggingface
 EXPOSE 8080
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1", "--no-access-log"]
