@@ -1,0 +1,44 @@
+services:
+  provider:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        VOXSHIFT_TORCH_INDEX: ${VOXSHIFT_TORCH_INDEX:-https://download.pytorch.org/whl/cpu}
+    environment:
+      VOXSHIFT_API_KEY: ${VOXSHIFT_API_KEY:?Set a random 32+ character secret in deploy/.env}
+      VOXSHIFT_DEVICE: ${VOXSHIFT_DEVICE:-cpu}
+    volumes:
+      - model-cache:/home/voxshift/.cache/huggingface
+    expose:
+      - "8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=5).read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15m
+    security_opt:
+      - no-new-privileges:true
+
+  https:
+    image: caddy:2.10.2
+    depends_on:
+      provider:
+        condition: service_healthy
+    environment:
+      VOXSHIFT_DOMAIN: ${VOXSHIFT_DOMAIN:?Set the DNS name for this model server}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+
+volumes:
+  model-cache:
+  caddy-data:
+  caddy-config:
