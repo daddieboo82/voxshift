@@ -4,7 +4,7 @@ This directory is a **deployment template**, not a running service. GitHub store
 
 1. Provision a Linux host with Docker Engine and Compose, a public DNS name, TCP 80/443 open, and enough RAM/storage for the Chatterbox model weights. Point the domain at the host. For production speed, prefer a compatible GPU host.
 2. Copy `.env.example` to `.env` in this directory. Replace `VOXSHIFT_DOMAIN` and generate a new random `VOXSHIFT_API_KEY` (32+ ASCII characters). Do not commit .env or reveal the key to the browser.
-3. Run from this directory: `docker compose config` to validate, then `docker compose up -d --build`. First startup downloads model weights and may take a while.
+3. From the repository root, run `python -m unittest discover -s tests` and `python scripts/deployment_preflight.py --env deploy/.env`. This checks the configuration locally and requires Docker on the intended inference host. From the `deploy` directory run `docker compose up -d --build` only after preflight passes. First startup downloads model weights and may take a while.
 4. Verify locally on the host: `docker compose ps`. Verify externally: `curl -i https://YOUR_DOMAIN/healthz`. Check authenticated modes: `curl -i -H "Authorization: Bearer YOUR_KEY" https://YOUR_DOMAIN/v1/capabilities`; never paste your live key into support messages or screenshots.
 5. Set **Base44 NaliChat backend secrets** `VOXSHIFT_PROVIDER_URL=https://YOUR_DOMAIN` and `VOXSHIFT_API_KEY` to the exact matching secret. Do not put these in `VITE_*` variables or frontend files.
 6. Open Studio → VoxShift Voice Match, confirm modes load, then do a permitted speech reference and source-take test. Confirm a new track appears and the original take remains. Only then expose generation to customers.
