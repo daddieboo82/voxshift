@@ -11,7 +11,7 @@ This directory is a **deployment template**, not a running service. GitHub store
 
 The server runs one worker. Job state is held in memory, expires after ten minutes, and disappears on restart; do not scale to multiple instances without persistent shared job storage. The API requires an authenticated Base44 backend proxy and an account owner ID for each job. Caddy handles HTTPS automatically when DNS and inbound ports work.
 
-For GPU hosts, install NVIDIA Container Toolkit and use a GPU-capable Docker Compose configuration that reserves a GPU for the provider. Also configure `VOXSHIFT_DEVICE=cuda` and a CUDA-compatible Torch wheel index (check compatibility for the selected GPU and PyTorch version). Do not change the existing CPU template blindly.
+For NVIDIA GPU hosts, install a compatible NVIDIA driver and the NVIDIA Container Toolkit. Set `VOXSHIFT_DEVICE=cuda` and `VOXSHIFT_TORCH_INDEX=https://download.pytorch.org/whl/cu124` in `deploy/.env` after confirming that this CUDA/PyTorch build supports your hardware. From the `deploy` directory, run `docker compose -f compose.yaml -f compose.gpu.yaml config --quiet` to validate and `docker compose -f compose.yaml -f compose.gpu.yaml up -d --build` to start. The optional `compose.gpu.yaml` requests one NVIDIA GPU without changing the default CPU deployment. GPU configuration does not guarantee the chosen server has a working GPU or enough memory for inference.
 
 ## Security and cost
 
