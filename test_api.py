@@ -57,6 +57,33 @@ class ProviderAPI(unittest.TestCase):
                                 headers=headers, data={"consent": "confirmed", "text": " "})
             self.assertEqual(blank.status_code, 422)
 
+    def test_rejects_malformed_generated_audio(self):
+        key = "test-key-" + "x" * 32
+        headers = {"Authorization": f"Bearer {key}", "X-VoxShift-Owner": "artist-one"}
+
+        class CorruptEngine(StandInEngine):
+            def synthesize(self, text, reference):
+                return b"not-a-real-wave" + b"0" * 64
+
+        with patch.dict("os.environ", {"VOXSHIFT_API_KEY": key}), TestClient(create_app(CorruptEngine)) as client:
+            request = {
+                "headers": headers,
+                "files": {"reference": ("reference.wav", make_wav(3))},
+                "data": {"consent": "confirmed", "text": "Studio voice check"},
+            }
+            direct = client.post("/v1/speech", **request)
+            self.assertEqual(direct.status_code, 502)
+            accepted = client.post("/v1/jobs/speech", **request)
+            self.assertEqual(accepted.status_code, 202)
+            path = "/v1/jobs/" + accepted.json()["jobId"]
+            deadline = monotonic() + 2
+            while monotonic() < deadline:
+                status = client.get(path, headers=headers).json()["status"]
+                if status == "failed":
+                    break
+                sleep(0.01)
+            self.assertEqual(status, "failed")
+
     def test_background_job_returns_before_inference_and_is_owner_scoped(self):
         started = Event()
         release = Event()
