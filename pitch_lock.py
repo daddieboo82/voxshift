@@ -68,9 +68,13 @@ def match_source_pitch(source_data, converted_data):
     ratio = source_pitch[:length] / converted_pitch[:length]
     valid = np.isfinite(ratio) & (ratio >= .7) & (ratio <= 1.42)
     source_voiced = np.isfinite(source_pitch[:length])
-    if np.count_nonzero(valid) < max(5, np.count_nonzero(source_voiced) * .45):
+    minimum_frames = max(5, np.count_nonzero(source_voiced) * .45)
+    if np.count_nonzero(valid) < minimum_frames:
+        # Conversion can transpose a low singing voice toward the reference register.
+        valid = np.isfinite(ratio) & (ratio >= .5) & (ratio <= 2)
+    if np.count_nonzero(valid) < minimum_frames:
         raise ValueError("Too few aligned voiced notes could be measured")
-    frame_log_ratio = np.where(valid, np.log(np.clip(ratio, .7, 1.42)), 0)
+    frame_log_ratio = np.where(valid, np.log(np.clip(ratio, .5, 2)), 0)
     smoothed_mask = gaussian_filter1d(valid.astype(np.float64), sigma=1.2)
     smoothed_log_ratio = gaussian_filter1d(frame_log_ratio, sigma=1.2)
     smoothed_log_ratio /= np.maximum(.01, smoothed_mask)
