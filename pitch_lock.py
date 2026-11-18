@@ -27,6 +27,30 @@ def track_pitch(samples, rate):
     return np.where(voiced & (probability >= .1), pitch, np.nan)
 
 
+def match_phrase_dynamics(source, source_rate, rendered, rate):
+    """Restore relative phrase levels while retaining the converted take's overall level."""
+    def envelope(samples, sample_rate):
+        hop = max(1, round(sample_rate * .02))
+        starts = np.arange(0, len(samples), hop)
+        counts = np.minimum(hop, len(samples) - starts)
+        energy = np.add.reduceat(samples.astype(np.float64) ** 2, starts) / counts
+        return (starts + counts / 2) / sample_rate, np.sqrt(energy)
+
+    source_time, original = envelope(source, source_rate)
+    times, converted = envelope(rendered, rate)
+    original = np.interp(times, source_time, original)
+    active = ((original > max(.001, original.max() * .04))
+              & (converted > max(.001, converted.max() * .04)))
+    if np.count_nonzero(active) < 5:
+        return rendered
+    delta = 20 * np.log10(np.maximum(original, 1e-6) / np.maximum(converted, 1e-6))
+    correction = np.where(active, np.clip(delta - np.median(delta[active]), -6, 6), 0)
+    gain_db = np.interp(np.arange(len(rendered)) / rate, times,
+                        gaussian_filter1d(correction, sigma=2))
+    adjusted = rendered * 10 ** (gain_db / 20)
+    return adjusted / max(1, np.max(np.abs(adjusted)) / (32767 / 32768))
+
+
 def match_source_pitch(source_data, converted_data):
     source, source_rate = read_mono_pcm(source_data)
     converted, rate = read_mono_pcm(converted_data)
@@ -64,6 +88,7 @@ def match_source_pitch(source_data, converted_data):
     shifted = np.interp(index - (phase - .5) * sweep, index, converted) * fade
     shifted += np.interp(index - (alt - .5) * sweep, index, converted) * (1 - fade)
     result = converted + wet * (shifted - converted)
+    result = match_phrase_dynamics(source, source_rate, result, rate)
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as wav:
         wav.setparams((1, 2, rate, 0, "NONE", "not compressed"))
