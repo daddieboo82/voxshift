@@ -65,6 +65,10 @@ class ChatterboxEngine:
         from pitch_lock import match_source_pitch
         return match_source_pitch(source, self.convert(source, reference))
 
+    def enhance(self, source, _unused_reference):
+        from vocal_enhance import enhance_vocal
+        return enhance_vocal(source)
+
 
 def validate_pcm(data, field, minimum, maximum):
     try:
@@ -144,6 +148,10 @@ def create_app(engine_factory=ChatterboxEngine):
     async def speech(request: Request):
         return await generate(request, speech=True)
 
+    @app.post("/v1/enhance")
+    async def enhance(request: Request):
+        return await generate(request, speech=False, enhance=True)
+
     def authorize(request: Request):
         authorization = request.headers.get("authorization", "").encode()
         if not hmac.compare_digest(authorization, app.state.key):
@@ -152,7 +160,7 @@ def create_app(engine_factory=ChatterboxEngine):
     @app.get("/v1/capabilities")
     async def capabilities(request: Request):
         authorize(request)
-        return JSONResponse({"modes": ["speech", "convert", "sing"]}, headers={"Cache-Control": "no-store"})
+        return JSONResponse({"modes": ["speech", "convert", "sing", "enhance"]}, headers={"Cache-Control": "no-store"})
 
     def read_owner(request: Request):
         owner = request.headers.get("x-voxshift-owner", "")
@@ -166,7 +174,7 @@ def create_app(engine_factory=ChatterboxEngine):
             "Content-Disposition": 'attachment; filename="voxshift-converted.wav"',
         })
 
-    async def read_inputs(request: Request, speech):
+    async def read_inputs(request: Request, speech, enhance=False):
         size = request.headers.get("content-length", "")
         if not size.isdecimal():
             raise HTTPException(411, "Content-Length required")
@@ -177,6 +185,9 @@ def create_app(engine_factory=ChatterboxEngine):
         async with request.form(max_files=2, max_fields=2, max_part_size=4096) as form:
             if form.getlist("consent") != ["confirmed"]:
                 raise HTTPException(422, "Confirm permission to use the reference voice")
+            if enhance:
+                source = await read_upload(form, "source", 1, 60)
+                return app.state.engine.enhance, source, b""
             reference = await read_upload(form, "reference", 3, 60)
             if speech:
                 text = str(form.get("text", "")).strip()
@@ -185,14 +196,14 @@ def create_app(engine_factory=ChatterboxEngine):
                 return app.state.engine.synthesize, text, reference
             return app.state.engine.convert, await read_upload(form, "source", 1, 60), reference
 
-    async def generate(request: Request, speech):
+    async def generate(request: Request, speech, enhance=False):
         authorize(request)
         try:
             app.state.slot.acquire_nowait()
         except WouldBlock as exc:
             raise HTTPException(503, "Voice engine is busy", headers={"Retry-After": "5"}) from exc
         try:
-            operation, argument, reference = await read_inputs(request, speech)
+            operation, argument, reference = await read_inputs(request, speech, enhance=enhance)
             try:
                 wav = await to_thread.run_sync(operation, argument, reference)
             except Exception as exc:
@@ -224,7 +235,7 @@ def create_app(engine_factory=ChatterboxEngine):
     async def start_job(mode: str, request: Request):
         authorize(request)
         owner = read_owner(request)
-        if mode not in ("speech", "convert", "sing"):
+        if mode not in ("speech", "convert", "sing", "enhance"):
             raise HTTPException(404, "Unknown generation mode")
         jobs = app.state.jobs
         pending = [job for job in jobs.values() if job["status"] in ("queued", "running", "receiving")]
@@ -233,7 +244,7 @@ def create_app(engine_factory=ChatterboxEngine):
         identifier = uuid4().hex
         jobs[identifier] = {"owner": owner, "status": "receiving"}
         try:
-            operation, argument, reference = await read_inputs(request, speech=mode == "speech")
+            operation, argument, reference = await read_inputs(request, speech=mode == "speech", enhance=mode == "enhance")
             if mode == "sing":
                 operation = app.state.engine.convert_singing
             if len(reference) > MAX_JOB_AUDIO or isinstance(argument, bytes) and len(argument) > MAX_JOB_AUDIO:
